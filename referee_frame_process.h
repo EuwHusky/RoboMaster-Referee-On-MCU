@@ -6,7 +6,7 @@
 #include "fifo.h"
 
 #define PM_FIFO_BUF_LENGTH 1024 // 电管链路裁判系统数据fifo数组大小
-#define VT_FIFO_BUF_LENGTH 1024 // 图传链路裁判系统数据fifo数组大小
+#define VT_FIFO_BUF_LENGTH 240  // 图传链路裁判系统数据fifo数组大小
 
 typedef enum RefereeLinkType
 {
@@ -38,7 +38,7 @@ typedef struct
 
 extern void refereeInitFrameProcesser(void);
 
-extern uint8_t *referee_pack_data(uint16_t cmd_id, uint8_t data_len, uint8_t *data);
+extern uint8_t *referee_pack_data(uint16_t cmd_id, uint8_t *data, uint16_t data_len);
 extern void refereeUnpackFifoData(referee_link_type_e referee_link_type);
 
 extern uint16_t getRefSentDataLen(void);
