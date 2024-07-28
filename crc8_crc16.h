@@ -18,7 +18,7 @@
 #ifndef CRC8_CRC16_H
 #define CRC8_CRC16_H
 
-#include "board.h"
+#include "stdint.h"
 
 /**
  * @brief          calculate the crc8

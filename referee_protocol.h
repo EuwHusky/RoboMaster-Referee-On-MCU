@@ -4,32 +4,35 @@
 #include "stdint.h"
 
 #define HEADER_SOF 0xA5
-#define REF_PROTOCOL_FRAME_MAX_SIZE 128
-#define REF_PROTOCOL_FRAME_DATA_MAX_SIZE 119
+#define REF_PROTOCOL_FRAME_MAX_SIZE 128U
+#define REF_PROTOCOL_FRAME_DATA_MAX_SIZE 119U
 
-#define REF_PROTOCOL_HEADER_SIZE 5
-#define REF_PROTOCOL_CMD_SIZE 2
-#define REF_PROTOCOL_CRC16_SIZE 2
+#define REF_PROTOCOL_HEADER_SIZE 5U
+#define REF_PROTOCOL_CMD_SIZE 2U
+#define REF_PROTOCOL_CRC16_SIZE 2U
 #define REF_HEADER_CMDID_LEN (REF_PROTOCOL_HEADER_SIZE + REF_PROTOCOL_CMD_SIZE)
 #define REF_HEADER_CRC_LEN (REF_PROTOCOL_HEADER_SIZE + REF_PROTOCOL_CRC16_SIZE)
 #define REF_HEADER_CRC_CMDID_LEN (REF_PROTOCOL_HEADER_SIZE + REF_PROTOCOL_CRC16_SIZE + REF_PROTOCOL_CMD_SIZE)
 
-#define ROBOT_INTERACTION_COMM_FREQ 10
-#define ROBOT_INTERACTION_COMM_TIME_MS (1000 / ROBOT_INTERACTION_COMM_FREQ)
+#define ROBOT_INTERACTION_COMM_FREQ (30.0f)
+#define ROBOT_INTERACTION_COMM_TIME_MS ((1000.0f) / ROBOT_INTERACTION_COMM_FREQ)
 
-#define ROBOT_INTERACTION_LAYER_DELETE_SUB_DATA_SIZE 2
-#define ROBOT_INTERACTION_PLOT_ONE_FIGURE_SUB_DATA_SIZE 15
-#define ROBOT_INTERACTION_PLOT_TWO_FIGURE_SUB_DATA_SIZE 30
-#define ROBOT_INTERACTION_PLOT_FIVE_FIGURE_SUB_DATA_SIZE 75
-#define ROBOT_INTERACTION_PLOT_SEVEN_FIGURE_SUB_DATA_SIZE 105
-#define ROBOT_INTERACTION_PLOT_CHARACTER_FIGURE_SUB_DATA_SIZE 45
-#define ROBOT_INTERACTION_SENTRY_CMD_SUB_DATA_SIZE 4
-#define ROBOT_INTERACTION_RADAR_CMD_SUB_DATA_SIZE 1
+#define ROBOT_INTERACTION_LAYER_DELETE_SUB_DATA_SIZE 2U
+#define ROBOT_INTERACTION_PLOT_ONE_FIGURE_SUB_DATA_SIZE 15U
+#define ROBOT_INTERACTION_PLOT_TWO_FIGURE_SUB_DATA_SIZE 30U
+#define ROBOT_INTERACTION_PLOT_FIVE_FIGURE_SUB_DATA_SIZE 75U
+#define ROBOT_INTERACTION_PLOT_SEVEN_FIGURE_SUB_DATA_SIZE 105U
+#define ROBOT_INTERACTION_PLOT_CHARACTER_FIGURE_SUB_DATA_SIZE 45U
+#define ROBOT_INTERACTION_SENTRY_CMD_SUB_DATA_SIZE 4U
+#define ROBOT_INTERACTION_RADAR_CMD_SUB_DATA_SIZE 1U
 
 typedef enum
 {
     GAME_ROBOT_HP_CMD_ID = 0x0003,
+
     ROBOT_STATUS_CMD_ID = 0x0201,
+    POWER_HEAT_DATA_CMD_ID = 0x0202,
+    SHOOT_DATA_CMD_ID = 0x0207,
 
     ROBOT_INTERACTION_DATA_CMD_ID = 0x0301,
 
@@ -144,6 +147,21 @@ typedef struct
 } frame_header_struct_t;
 
 /**
+ * @命令码 0x0001
+ * @数据段长度 11
+ * @说明 比赛状态数据，固定以1Hz频率发送
+ * @发送方/接收方 服务器→全体机器人
+ * @所属数据链路 常规链路
+ */
+typedef struct
+{
+    uint8_t game_type : 4;
+    uint8_t game_progress : 4;
+    uint16_t stage_remain_time;
+    uint64_t SyncTimeStamp;
+} game_status_t;
+
+/**
  * @命令码 0x0003
  * @数据段长度 32
  * @说明 机器人血量数据，固定以 3Hz 频率发送
@@ -190,6 +208,39 @@ typedef struct
     uint8_t power_management_chassis_output : 1;
     uint8_t power_management_shooter_output : 1;
 } robot_status_t;
+
+/**
+ * @命令码 0x0202
+ * @数据段长度 16
+ * @说明 实时底盘功率和枪口热量数据，固定以50Hz频率发送
+ * @发送方/接收方 主控模块→对应机器人
+ * @所属数据链路 常规链路
+ */
+typedef struct
+{
+    uint16_t chassis_voltage;
+    uint16_t chassis_current;
+    float chassis_power;
+    uint16_t buffer_energy;
+    uint16_t shooter_17mm_1_barrel_heat;
+    uint16_t shooter_17mm_2_barrel_heat;
+    uint16_t shooter_42mm_barrel_heat;
+} power_heat_data_t;
+
+/**
+ * @命令码 0x0207
+ * @数据段长度 7
+ * @说明 实时射击数据，弹丸发射后发送
+ * @发送方/接收方 主控模块→对应机器人
+ * @所属数据链路 常规链路
+ */
+typedef struct
+{
+    uint8_t bullet_type;
+    uint8_t shooter_number;
+    uint8_t launching_frequency;
+    float initial_speed;
+} shoot_data_t;
 
 /**
  * @命令码 0x0301

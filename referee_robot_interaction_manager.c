@@ -7,29 +7,32 @@
 
 static robot_interaction_manager_t manager;
 
-static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer);
+// static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer);
 static uint8_t *manage_and_encode_client_ui_plot_data(void);
 
 static robot_interaction_data_header_t *modify_interaction_data_header(uint16_t sub_cmd_id, uint16_t target_id);
 static uint8_t get_sub_data_len_by_sub_cmd_id(uint16_t sub_cmd_id);
 
-void refereeInitRobotInteractionManager(uint32_t *step_clock_source, uint16_t step_time, uint8_t figure_num,
-                                        uint8_t character_num)
+/**
+ * @brief 初始化机器人交互数据管理器
+ *
+ * @param step_clock_source 时钟源
+ * @param step_time
+ * @param figure_num
+ * @param character_num
+ */
+void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num)
 {
-    if (step_clock_source == NULL)
-        return;
-    if (step_time < 1)
-        return;
-
     memset(&manager, 0, sizeof(robot_interaction_manager_t));
+
+    manager.last_successful_send_time = 0;
 
     manager.interaction_data_sent = malloc(REF_PROTOCOL_FRAME_DATA_MAX_SIZE);
     memset(manager.interaction_data_sent, 0, REF_PROTOCOL_FRAME_DATA_MAX_SIZE);
 
-    manager.step_clock = step_clock_source;
-    manager.step_time = step_time;
-
     manager.figure_num = figure_num;
+    manager.configured_figure_num = 0;
+    manager.last_queue_refresh_figure_index = 0;
     if (manager.figure_num > 0)
     {
         manager.figures = malloc(manager.figure_num * sizeof(interaction_figure_factory_t));
@@ -37,6 +40,7 @@ void refereeInitRobotInteractionManager(uint32_t *step_clock_source, uint16_t st
     }
 
     manager.character_num = character_num;
+    manager.configured_character_num = 0;
     if (manager.character_num > 0)
     {
         manager.characters = malloc(manager.character_num * sizeof(interaction_character_factory_t));
@@ -51,17 +55,17 @@ void refereeInitRobotInteractionManager(uint32_t *step_clock_source, uint16_t st
  * @return uint8_t* 一整包可直接发给裁判系统的数据流
  * @note 使用的时候务必检查返回值是否为NULL，仅当不为NULL时用户才可发送
  */
-uint8_t *refereeEncodeRobotInteractionData(robot_interaction_type_e robot_interaction_type)
+uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_type_e robot_interaction_type)
 {
-    uint8_t *sub_data = NULL;
-
-    if ((*manager.step_clock - manager.last_successful_send_time) >
-        (ROBOT_INTERACTION_COMM_TIME_MS / manager.step_time))
+    if ((float)(now_time - manager.last_successful_send_time) > ROBOT_INTERACTION_COMM_TIME_MS)
     {
+        uint8_t *sub_data = NULL;
+
         switch (robot_interaction_type)
         {
-        // case ROBOT_TO_ROBOT_INTERACTION: {
-        // }
+        case ROBOT_TO_ROBOT_INTERACTION: {
+            return NULL;
+        }
         case CLIENT_UI_PLOT: {
             if (sub_data = manage_and_encode_client_ui_plot_data(), sub_data == NULL)
                 return NULL;
@@ -70,21 +74,23 @@ uint8_t *refereeEncodeRobotInteractionData(robot_interaction_type_e robot_intera
                                          get_sub_data_len_by_sub_cmd_id(manager.sub_cmd_id));
         }
         case SENTRY_CMD: {
+            return NULL;
         }
         case RADAR_CMD: {
+            return NULL;
         }
 
         default:
-            break;
+            return NULL;
         }
     }
 
     return NULL;
 }
 
-void refereeRobotInteractionManagerSuccessfullySentHook(void)
+void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time)
 {
-    manager.last_successful_send_time = *manager.step_clock;
+    manager.last_successful_send_time = now_time;
 }
 
 // void refereeSetRobotInteractionMessageBuilder(uint8_t index, void (*builder)(interaction_figure_t *))
@@ -97,43 +103,62 @@ void refereeRobotInteractionManagerSuccessfullySentHook(void)
 //     manager.figures[index].builder = builder;
 // }
 
-void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *))
-{
-    if (builder == NULL)
-        return;
+// void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *))
+// {
+//     if (builder == NULL)
+//         return;
 
-    manager.layer_deleter_builder = builder;
-}
+//     manager.layer_deleter_builder = builder;
+// }
 
-void refereeSetRobotInteractionFigureBuilder(uint8_t index,
-                                             void (*builder)(interaction_figure_t *, figure_operation_type_e))
+bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
+                                         void (*builder)(interaction_figure_t *, figure_operation_type_e))
 {
-    if (index >= manager.figure_num)
-        return;
+    if (manager.configured_figure_num >= manager.figure_num)
+        return false;
     if (builder == NULL)
-        return;
+        return false;
+
+    uint8_t index = manager.configured_figure_num;
+    manager.configured_figure_num++;
 
     manager.figures[index].builder = builder;
+
+    uint8_t real_time_refresh_figure_num = 0;
+    for (uint8_t i = 0; i < manager.configured_figure_num; i++)
+    {
+        if (manager.figures[index].refresh_level == UI_REFRESH_REAL_TIME)
+            real_time_refresh_figure_num++;
+    }
+    if (real_time_refresh_figure_num >= MAX_REAL_TIME_REFRESH_UI_NUM && refresh_level != UI_REFRESH_ONCE)
+        return false;
+    manager.figures[index].refresh_level = refresh_level;
+
+    return true;
 }
 
-void refereeSetRobotInteractionCharacterBuilder(uint8_t index,
-                                                void (*builder)(interaction_character_t *, figure_operation_type_e))
+bool refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *, figure_operation_type_e))
 {
-    if (index >= manager.character_num)
-        return;
+    if (manager.configured_character_num >= manager.character_num)
+        return false;
     if (builder == NULL)
-        return;
+        return false;
+
+    uint8_t index = manager.configured_character_num;
+    manager.configured_character_num++;
 
     manager.characters[index].builder = builder;
+
+    return true;
 }
 
 void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t index)
 {
     if (operation_type == UI_RESET_ALL)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_plotted = false;
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_plotted = false;
     }
     else if (operation_type == UI_RESET_ALL_FIGURES)
@@ -220,104 +245,52 @@ void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t i
 
 // 机器人间通信还需要提供修改内容的API和获取编码后数据流的API
 
-static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer)
-{
-    return NULL;
-}
+// static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer)
+// {
+//     return NULL;
+// }
 
+/**
+ * @brief 自动决策并编码UI数据
+ *
+ * @note 编码优先级 静态图形 > 静态字符 > 动态图形
+ */
 static uint8_t *manage_and_encode_client_ui_plot_data(void)
 {
-    // 优先打印静态内容 随后便不再打印 一次只能打印一个
-    if (manager.plotted_character_num < manager.character_num)
+    /* 索引值 图形最多能发7个 所以有7个索引值 */
+    uint8_t index[7] = {0};
+    uint8_t used_index_num = 0;
+
+    /* 静态图形 */
+    for (uint8_t i = 0; i < manager.configured_figure_num; i++)
     {
-        manager.sub_cmd_id = PLOT_CHARACTER_FIGURE_SUBCMD_ID;
-
-        // 构建图形
-        if (manager.characters[manager.plotted_character_num].builder != NULL)
+        if (manager.figures[i].refresh_level == UI_REFRESH_ONCE)
         {
-            figure_operation_type_e figure_operation_type = FIGURE_NOP;
-            if (manager.figures[manager.plotted_character_num].is_hidden)
+            if (!manager.figures[i].is_plotted && !manager.figures[i].is_hidden)
             {
-                if (manager.figures[manager.plotted_character_num].is_plotted)
-                {
-                    figure_operation_type = FIGURE_DELETE;
-                    manager.figures[manager.plotted_character_num].is_plotted = false;
-                }
-                else
-                {
-                    figure_operation_type = FIGURE_NOP;
-                }
+                index[used_index_num] = i;
+                used_index_num++;
+                if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+                    break;
             }
-            else
-            {
-                if (manager.figures[manager.plotted_character_num].is_plotted)
-                {
-                    figure_operation_type = FIGURE_MODIFY;
-                }
-                else
-                {
-                    figure_operation_type = FIGURE_ADD;
-                    manager.figures[manager.plotted_character_num].is_plotted = true;
-                }
-            }
-
-            manager.figures[manager.plotted_character_num].builder(
-                &manager.figures[manager.plotted_character_num].figure, figure_operation_type);
         }
-
-        // 数据头编码
-        memcpy(manager.interaction_data_sent,
-               modify_interaction_data_header(manager.sub_cmd_id, getRobotClientId(ROBOT_SELF_ID)),
-               sizeof(robot_interaction_data_header_t));
-        // 数据内容编码
-        memcpy(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t),
-               &manager.characters[manager.plotted_character_num].character, sizeof(interaction_character_t));
-
-        manager.plotted_character_num++;
-
-        return manager.interaction_data_sent;
     }
-
-    // 循环打印动态内容 一次可以打印至多七个
-    else if (manager.figure_num > 0)
+    if (used_index_num)
     {
-        uint8_t to_be_plotted_figure_num_this_round = 0;
-        uint8_t unplotted_figure_num = manager.figure_num - manager.plotted_figure_num;
-
-        // 管理打印流
-        if (unplotted_figure_num >= 7)
+        /* 设定子内容ID */
+        manager.sub_cmd_id = PLOT_SEVEN_FIGURE_SUBCMD_ID;
+        /* 构建数据内容 */
+        for (uint8_t i = 0; i < used_index_num; i++)
         {
-            manager.sub_cmd_id = PLOT_SEVEN_FIGURE_SUBCMD_ID;
-            to_be_plotted_figure_num_this_round = 7;
-        }
-        else if (unplotted_figure_num >= 5)
-        {
-            manager.sub_cmd_id = PLOT_FIVE_FIGURE_SUBCMD_ID;
-            to_be_plotted_figure_num_this_round = 5;
-        }
-        else if (unplotted_figure_num >= 2)
-        {
-            manager.sub_cmd_id = PLOT_TWO_FIGURE_SUBCMD_ID;
-            to_be_plotted_figure_num_this_round = 2;
-        }
-        else if (unplotted_figure_num == 1)
-        {
-            manager.sub_cmd_id = PLOT_ONE_FIGURE_SUBCMD_ID;
-            to_be_plotted_figure_num_this_round = 1;
-        }
-
-        // 构建图形
-        for (uint8_t i = 0; i < to_be_plotted_figure_num_this_round; i++)
-        {
-            if (manager.figures[manager.plotted_figure_num + i].builder != NULL)
+            if (manager.figures[index[i]].builder != NULL)
             {
                 figure_operation_type_e figure_operation_type = FIGURE_NOP;
-                if (manager.figures[manager.plotted_figure_num + i].is_hidden)
+                if (manager.figures[index[i]].is_hidden)
                 {
-                    if (manager.figures[manager.plotted_figure_num + i].is_plotted)
+                    if (manager.figures[index[i]].is_plotted)
                     {
                         figure_operation_type = FIGURE_DELETE;
-                        manager.figures[manager.plotted_figure_num + i].is_plotted = false;
+                        manager.figures[index[i]].is_plotted = false;
                     }
                     else
                     {
@@ -326,38 +299,205 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
                 }
                 else
                 {
-                    if (manager.figures[manager.plotted_figure_num + i].is_plotted)
+                    if (manager.figures[index[i]].is_plotted)
                     {
                         figure_operation_type = FIGURE_MODIFY;
                     }
                     else
                     {
                         figure_operation_type = FIGURE_ADD;
-                        manager.figures[manager.plotted_figure_num + i].is_plotted = true;
+                        manager.figures[index[i]].is_plotted = true;
                     }
                 }
-
-                manager.figures[manager.plotted_figure_num + i].builder(
-                    &manager.figures[manager.plotted_figure_num + i].figure, figure_operation_type);
+                manager.figures[index[i]].builder(&manager.figures[index[i]].figure, figure_operation_type);
             }
         }
-
-        // 数据头编码
+        /* 数据头编码 */
         memcpy(manager.interaction_data_sent,
                modify_interaction_data_header(manager.sub_cmd_id, getRobotClientId(ROBOT_SELF_ID)),
                sizeof(robot_interaction_data_header_t));
-        // 数据内容编码
-        for (uint8_t i = 0; i < to_be_plotted_figure_num_this_round; i++)
+        /* 数据内容编码 */
+        memset(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t), 0,
+               MAX_FIGURE_PLOT_NUM_IN_A_SENT * sizeof(interaction_figure_t));
+        for (uint8_t i = 0; i < used_index_num; i++)
         {
             memcpy(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t) +
                        i * sizeof(interaction_figure_t),
-                   &manager.figures[manager.plotted_figure_num + i].figure, sizeof(interaction_figure_t));
+                   &manager.figures[index[i]].figure, sizeof(interaction_figure_t));
         }
 
-        // 结算打印流并循环
-        manager.plotted_figure_num += to_be_plotted_figure_num_this_round;
-        if (manager.plotted_figure_num == manager.figure_num)
-            manager.plotted_figure_num = 0;
+        return manager.interaction_data_sent;
+    }
+
+    /* 静态字符 */
+    uint8_t processed_character_num = 0;
+    for (uint8_t i = 0; i < manager.configured_character_num; i++)
+    {
+        if (manager.characters[i].is_plotted || manager.characters[i].is_hidden)
+        {
+            processed_character_num++;
+        }
+        else
+        {
+            index[used_index_num] = i;
+            used_index_num++;
+            break;
+        }
+    }
+    if (used_index_num)
+    {
+        /* 设定子内容ID */
+        manager.sub_cmd_id = PLOT_CHARACTER_FIGURE_SUBCMD_ID;
+        /* 构建数据内容 */
+        if (manager.characters[index[0]].builder != NULL)
+        {
+            figure_operation_type_e figure_operation_type = FIGURE_NOP;
+            if (manager.characters[index[0]].is_hidden)
+            {
+                if (manager.characters[index[0]].is_plotted)
+                {
+                    figure_operation_type = FIGURE_DELETE;
+                    manager.characters[index[0]].is_plotted = false;
+                }
+                else
+                {
+                    figure_operation_type = FIGURE_NOP;
+                }
+            }
+            else
+            {
+                if (manager.characters[index[0]].is_plotted)
+                {
+                    figure_operation_type = FIGURE_MODIFY;
+                }
+                else
+                {
+                    figure_operation_type = FIGURE_ADD;
+                    manager.characters[index[0]].is_plotted = true;
+                }
+            }
+            manager.characters[index[0]].builder(&manager.characters[index[0]].character, figure_operation_type);
+            /* 数据头编码 */
+            memcpy(manager.interaction_data_sent,
+                   modify_interaction_data_header(manager.sub_cmd_id, getRobotClientId(ROBOT_SELF_ID)),
+                   sizeof(robot_interaction_data_header_t));
+            /* 数据内容编码 */
+            memcpy(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t),
+                   &manager.characters[index[0]].character, sizeof(interaction_character_t));
+
+            return manager.interaction_data_sent;
+        }
+    }
+
+    /* 动态图形 */
+    uint8_t real_time_refresh_figure_num = 0;
+    uint8_t queue_refresh_figure_num = 0;
+    for (uint8_t i = 0; i < manager.configured_figure_num; i++)
+    {
+        if (manager.figures[i].refresh_level == UI_REFRESH_REAL_TIME)
+        {
+            real_time_refresh_figure_num++;
+
+            index[used_index_num] = i;
+            used_index_num++;
+        }
+        else if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+        {
+            queue_refresh_figure_num++;
+        }
+    }
+    if (used_index_num < MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+    {
+        /* 本次编码可以发送的队列刷新图形数量 也即实时刷新图形余下的空位数量 */
+        uint8_t queue_figure_to_plot_num = MAX_FIGURE_PLOT_NUM_IN_A_SENT - used_index_num;
+        /* 队列刷新图形数量不多于实时刷新图形余下的空位数量时 其最终也将被实时刷新 */
+        if (queue_figure_to_plot_num >= queue_refresh_figure_num)
+        {
+            for (uint8_t i = 0; i < manager.configured_figure_num; i++)
+            {
+                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+                {
+                    index[used_index_num] = i;
+                    used_index_num++;
+                    if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+                        break;
+                }
+            }
+        }
+        /* 否则就在所有队列刷新图形中按顺序循环刷新 */
+        else
+        {
+            /* 已占用的空位数量 */
+            uint8_t processed_queue_figure_num = 0;
+            for (uint8_t i = manager.last_queue_refresh_figure_index + 1;
+                 processed_queue_figure_num < queue_figure_to_plot_num;
+                 i = i >= manager.configured_figure_num - 1 ? 0 : i + 1)
+            {
+                if (i >= manager.configured_figure_num)
+                    continue;
+                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+                {
+                    index[used_index_num] = i;
+                    used_index_num++;
+                    if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+                    {
+                        manager.last_queue_refresh_figure_index = i;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    if (used_index_num)
+    {
+        /* 设定子内容ID */
+        manager.sub_cmd_id = PLOT_SEVEN_FIGURE_SUBCMD_ID;
+        /* 构建数据内容 */
+        for (uint8_t i = 0; i < used_index_num; i++)
+        {
+            if (manager.figures[index[i]].builder != NULL)
+            {
+                figure_operation_type_e figure_operation_type = FIGURE_NOP;
+                if (manager.figures[index[i]].is_hidden)
+                {
+                    if (manager.figures[index[i]].is_plotted)
+                    {
+                        figure_operation_type = FIGURE_DELETE;
+                        manager.figures[index[i]].is_plotted = false;
+                    }
+                    else
+                    {
+                        figure_operation_type = FIGURE_NOP;
+                    }
+                }
+                else
+                {
+                    if (manager.figures[index[i]].is_plotted)
+                    {
+                        figure_operation_type = FIGURE_MODIFY;
+                    }
+                    else
+                    {
+                        figure_operation_type = FIGURE_ADD;
+                        manager.figures[index[i]].is_plotted = true;
+                    }
+                }
+                manager.figures[index[i]].builder(&manager.figures[index[i]].figure, figure_operation_type);
+            }
+        }
+        /* 数据头编码 */
+        memcpy(manager.interaction_data_sent,
+               modify_interaction_data_header(manager.sub_cmd_id, getRobotClientId(ROBOT_SELF_ID)),
+               sizeof(robot_interaction_data_header_t));
+        /* 数据内容编码 */
+        memset(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t), 0,
+               MAX_FIGURE_PLOT_NUM_IN_A_SENT * sizeof(interaction_figure_t));
+        for (uint8_t i = 0; i < used_index_num; i++)
+        {
+            memcpy(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t) +
+                       i * sizeof(interaction_figure_t),
+                   &manager.figures[index[i]].figure, sizeof(interaction_figure_t));
+        }
 
         return manager.interaction_data_sent;
     }

@@ -2,6 +2,7 @@
 #ifndef __FIFO_H__
 #define __FIFO_H__
 
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,12 +13,12 @@
 
 typedef struct
 {
-  char *p_start_addr; // FIFO起始地址
-  char *p_end_addr;   // FIFO终止地址
-  int free_num;       // FIFO的剩余容量
-  int used_num;       // FIFO中的元素数量
-  char *p_read_addr;  // FIFO 数据读取索引指针
-  char *p_write_addr; // FIFO 数据写入索引指针
+    char *p_start_addr; // FIFO起始地址
+    char *p_end_addr;   // FIFO终止地址
+    int free_num;       // FIFO的剩余容量
+    int used_num;       // FIFO中的元素数量
+    char *p_read_addr;  // FIFO 数据读取索引指针
+    char *p_write_addr; // FIFO 数据写入索引指针
 } fifo_s_t;
 
 // 初始化静态FIFO结构

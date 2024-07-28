@@ -1,6 +1,8 @@
 #ifndef _REFEREE_ROBOT_INTERACTION_MANAGER_H__
 #define _REFEREE_ROBOT_INTERACTION_MANAGER_H__
 
+#include "stdbool.h"
+
 #include "referee.h"
 #include "referee_protocol.h"
 
@@ -13,6 +15,24 @@
 #endif
 
 #define REFEREE_SYSTEM_SERVER_ID 0x8080
+
+#define MAX_FIGURE_PLOT_NUM_IN_A_SENT (7U)
+#define MAX_REAL_TIME_REFRESH_UI_NUM (MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+typedef enum RobotInteractionType
+{
+    ROBOT_TO_ROBOT_INTERACTION = 0,
+    CLIENT_UI_PLOT,
+    SENTRY_CMD,
+    RADAR_CMD,
+
+} robot_interaction_type_e;
+
+typedef enum ClientUiRefreshLevel
+{
+    UI_REFRESH_ONCE = 0,
+    UI_REFRESH_REAL_TIME,
+    UI_REFRESH_IN_QUEUE,
+} client_ui_refresh_level_e;
 
 typedef enum ClientUiOperationType
 {
@@ -36,15 +56,6 @@ typedef enum ClientUiOperationType
 
 } client_ui_operation_type_e;
 
-typedef enum RobotInteractionType
-{
-    // ROBOT_TO_ROBOT_INTERACTION = 0,
-    CLIENT_UI_PLOT,
-    SENTRY_CMD,
-    RADAR_CMD,
-
-} robot_interaction_type_e;
-
 // typedef struct InteractionMessageFactory
 // {
 //     uint8_t *message;
@@ -54,23 +65,24 @@ typedef enum RobotInteractionType
 typedef struct InteractionFigureFactory
 {
     interaction_figure_t figure;
+    void (*builder)(interaction_figure_t *, figure_operation_type_e);
+
     bool is_plotted;
     bool is_hidden;
-    void (*builder)(interaction_figure_t *, figure_operation_type_e);
+    client_ui_refresh_level_e refresh_level;
 } interaction_figure_factory_t;
 
 typedef struct InteractionCharacterFactory
 {
     interaction_character_t character;
+    void (*builder)(interaction_character_t *, figure_operation_type_e);
+
     bool is_plotted;
     bool is_hidden;
-    void (*builder)(interaction_character_t *, figure_operation_type_e);
 } interaction_character_factory_t;
 
 typedef struct RobotInteractionManager
 {
-    uint32_t *step_clock;               // 管理器时钟
-    uint16_t step_time;                 // 管理器时钟步长 单位 ms
     uint32_t last_successful_send_time; // 上次成功发送的时间
 
     robot_interaction_data_header_t robot_interaction_data_header; // 子内容数据头
@@ -82,37 +94,36 @@ typedef struct RobotInteractionManager
     // interaction_message_factory_t messages;
 
     // UI
-    interaction_layer_delete_t layer_deleter;
-    void (*layer_deleter_builder)(interaction_layer_delete_t *);
+    // interaction_layer_delete_t layer_deleter;
+    // void (*layer_deleter_builder)(interaction_layer_delete_t *);
     uint8_t figure_num;
-    uint8_t plotted_figure_num;
+    uint8_t configured_figure_num;
+    uint8_t last_queue_refresh_figure_index;
     interaction_figure_factory_t *figures;
     uint8_t character_num;
-    uint8_t plotted_character_num;
+    uint8_t configured_character_num;
     interaction_character_factory_t *characters;
 
-    // 烧饼自主决策
-    interaction_sentry_cmd_t sentry_cmd;
-    void (*sentry_cmd_builder)(interaction_sentry_cmd_t *);
+    // // 烧饼自主决策
+    // interaction_sentry_cmd_t sentry_cmd;
+    // void (*sentry_cmd_builder)(interaction_sentry_cmd_t *);
 
-    // 雷达自主决策
-    interaction_radar_cmd_t radar_cmd;
-    void (*radar_cmd_builder)(interaction_radar_cmd_t *);
+    // // 雷达自主决策
+    // interaction_radar_cmd_t radar_cmd;
+    // void (*radar_cmd_builder)(interaction_radar_cmd_t *);
 
 } robot_interaction_manager_t;
 
-extern void refereeInitRobotInteractionManager(uint32_t *step_clock_source, uint16_t step_time, uint8_t figure_num,
-                                               uint8_t character_num);
-extern uint8_t *refereeEncodeRobotInteractionData(robot_interaction_type_e robot_interaction_type);
-extern void refereeRobotInteractionManagerSuccessfullySentHook(void);
+extern void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num);
+extern uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_type_e robot_interaction_type);
+extern void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time);
 
 // extern void refereeSetRobotInteractionMessageBuilder(uint8_t index, void (*builder)(interaction_figure_t *));
 
-extern void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *));
-extern void refereeSetRobotInteractionFigureBuilder(uint8_t index,
-                                                    void (*builder)(interaction_figure_t *, figure_operation_type_e));
-extern void refereeSetRobotInteractionCharacterBuilder(uint8_t index, void (*builder)(interaction_character_t *,
-                                                                                      figure_operation_type_e));
+// extern void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *));
+extern bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
+                                                void (*builder)(interaction_figure_t *, figure_operation_type_e));
+extern bool refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *, figure_operation_type_e));
 
 extern void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t index);
 
