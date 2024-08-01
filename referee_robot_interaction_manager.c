@@ -124,14 +124,6 @@ bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level
 
     manager.figures[index].builder = builder;
 
-    uint8_t real_time_refresh_figure_num = 0;
-    for (uint8_t i = 0; i < manager.configured_figure_num; i++)
-    {
-        if (manager.figures[index].refresh_level == UI_REFRESH_REAL_TIME)
-            real_time_refresh_figure_num++;
-    }
-    if (real_time_refresh_figure_num >= MAX_REAL_TIME_REFRESH_UI_NUM && refresh_level != UI_REFRESH_ONCE)
-        return false;
     manager.figures[index].refresh_level = refresh_level;
 
     return true;
@@ -264,15 +256,13 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
     /* 静态图形 */
     for (uint8_t i = 0; i < manager.configured_figure_num; i++)
     {
-        if (manager.figures[i].refresh_level == UI_REFRESH_ONCE)
+        if (manager.figures[i].refresh_level == UI_REFRESH_ONCE &&
+            (manager.figures[i].is_hidden ? manager.figures[i].is_plotted : !manager.figures[i].is_plotted))
         {
-            if (!manager.figures[i].is_plotted && !manager.figures[i].is_hidden)
-            {
-                index[used_index_num] = i;
-                used_index_num++;
-                if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
-                    break;
-            }
+            index[used_index_num] = i;
+            used_index_num++;
+            if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+                break;
         }
     }
     if (used_index_num)
@@ -330,14 +320,10 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
     }
 
     /* 静态字符 */
-    uint8_t processed_character_num = 0;
+
     for (uint8_t i = 0; i < manager.configured_character_num; i++)
     {
-        if (manager.characters[i].is_plotted || manager.characters[i].is_hidden)
-        {
-            processed_character_num++;
-        }
-        else
+        if (manager.characters[i].is_hidden ? manager.characters[i].is_plotted : !manager.characters[i].is_plotted)
         {
             index[used_index_num] = i;
             used_index_num++;
@@ -390,18 +376,21 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
     }
 
     /* 动态图形 */
-    uint8_t real_time_refresh_figure_num = 0;
+
+    /* 队列刷新的图形数量 */
     uint8_t queue_refresh_figure_num = 0;
     for (uint8_t i = 0; i < manager.configured_figure_num; i++)
     {
-        if (manager.figures[i].refresh_level == UI_REFRESH_REAL_TIME)
+        if (manager.figures[i].refresh_level == UI_REFRESH_REAL_TIME &&
+            (manager.figures[i].is_hidden ? manager.figures[i].is_plotted : true))
         {
-            real_time_refresh_figure_num++;
-
             index[used_index_num] = i;
             used_index_num++;
+            if (used_index_num >= MAX_FIGURE_PLOT_NUM_IN_A_SENT)
+                break;
         }
-        else if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+        else if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE &&
+                 (manager.figures[i].is_hidden ? manager.figures[i].is_plotted : true))
         {
             queue_refresh_figure_num++;
         }
@@ -409,13 +398,14 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
     if (used_index_num < MAX_FIGURE_PLOT_NUM_IN_A_SENT)
     {
         /* 本次编码可以发送的队列刷新图形数量 也即实时刷新图形余下的空位数量 */
-        uint8_t queue_figure_to_plot_num = MAX_FIGURE_PLOT_NUM_IN_A_SENT - used_index_num;
+        uint8_t figure_plot_vacancy = MAX_FIGURE_PLOT_NUM_IN_A_SENT - used_index_num;
         /* 队列刷新图形数量不多于实时刷新图形余下的空位数量时 其最终也将被实时刷新 */
-        if (queue_figure_to_plot_num >= queue_refresh_figure_num)
+        if (figure_plot_vacancy >= queue_refresh_figure_num)
         {
             for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             {
-                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE &&
+                    (manager.figures[i].is_hidden ? manager.figures[i].is_plotted : true))
                 {
                     index[used_index_num] = i;
                     used_index_num++;
@@ -430,12 +420,13 @@ static uint8_t *manage_and_encode_client_ui_plot_data(void)
             /* 已占用的空位数量 */
             uint8_t processed_queue_figure_num = 0;
             for (uint8_t i = manager.last_queue_refresh_figure_index + 1;
-                 processed_queue_figure_num < queue_figure_to_plot_num;
+                 processed_queue_figure_num < figure_plot_vacancy;
                  i = i >= manager.configured_figure_num - 1 ? 0 : i + 1)
             {
                 if (i >= manager.configured_figure_num)
                     continue;
-                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE)
+                if (manager.figures[i].refresh_level == UI_REFRESH_IN_QUEUE &&
+                    (manager.figures[i].is_hidden ? manager.figures[i].is_plotted : true))
                 {
                     index[used_index_num] = i;
                     used_index_num++;
