@@ -83,6 +83,8 @@ typedef struct InteractionCharacterFactory
 
 typedef struct RobotInteractionManager
 {
+    bool init_success;
+
     uint32_t last_successful_send_time; // 上次成功发送的时间
 
     robot_interaction_data_header_t robot_interaction_data_header; // 子内容数据头
@@ -114,17 +116,19 @@ typedef struct RobotInteractionManager
 
 } robot_interaction_manager_t;
 
-extern void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num);
+extern bool refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num);
 extern uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_type_e robot_interaction_type);
 extern void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time);
 
 // extern void refereeSetRobotInteractionMessageBuilder(uint8_t index, void (*builder)(interaction_figure_t *));
 
 // extern void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *));
-extern bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
-                                                void (*builder)(interaction_figure_t *, figure_operation_type_e));
-extern bool refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *, figure_operation_type_e));
+extern uint8_t refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
+                                                   void (*builder)(interaction_figure_t *, figure_operation_type_e));
+extern uint8_t refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *,
+                                                                      figure_operation_type_e));
 
+extern void refereeClientUiDynamicFigureAdjust(uint8_t index, client_ui_refresh_level_e refresh_level);
 extern void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t index);
 
 #endif /* _REFEREE_ROBOT_INTERACTION_MANAGER_H__ */

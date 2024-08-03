@@ -21,9 +21,11 @@ static uint8_t get_sub_data_len_by_sub_cmd_id(uint16_t sub_cmd_id);
  * @param figure_num
  * @param character_num
  */
-void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num)
+bool refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num)
 {
     memset(&manager, 0, sizeof(robot_interaction_manager_t));
+
+    manager.init_success = false;
 
     manager.last_successful_send_time = 0;
 
@@ -33,19 +35,29 @@ void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_nu
     manager.figure_num = figure_num;
     manager.configured_figure_num = 0;
     manager.last_queue_refresh_figure_index = 0;
-    if (manager.figure_num > 0)
+    if (manager.figure_num > 0 && manager.figure_num < 255)
     {
         manager.figures = malloc(manager.figure_num * sizeof(interaction_figure_factory_t));
         memset(manager.figures, 0, manager.figure_num * sizeof(interaction_figure_factory_t));
     }
+    else
+    {
+        return false;
+    }
 
     manager.character_num = character_num;
     manager.configured_character_num = 0;
-    if (manager.character_num > 0)
+    if (manager.character_num > 0 && manager.character_num < 255)
     {
         manager.characters = malloc(manager.character_num * sizeof(interaction_character_factory_t));
         memset(manager.characters, 0, manager.character_num * sizeof(interaction_character_factory_t));
     }
+    else
+    {
+        return false;
+    }
+
+    return manager.init_success = true, manager.init_success;
 }
 
 /**
@@ -57,6 +69,9 @@ void refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_nu
  */
 uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_type_e robot_interaction_type)
 {
+    if (!manager.init_success)
+        return NULL;
+
     if ((float)(now_time - manager.last_successful_send_time) > ROBOT_INTERACTION_COMM_TIME_MS)
     {
         uint8_t *sub_data = NULL;
@@ -90,6 +105,9 @@ uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_
 
 void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time)
 {
+    if (!manager.init_success)
+        return;
+
     manager.last_successful_send_time = now_time;
 }
 
@@ -111,13 +129,15 @@ void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time)
 //     manager.layer_deleter_builder = builder;
 // }
 
-bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
-                                         void (*builder)(interaction_figure_t *, figure_operation_type_e))
+uint8_t refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,
+                                            void (*builder)(interaction_figure_t *, figure_operation_type_e))
 {
+    if (!manager.init_success)
+        return 255u;
     if (manager.configured_figure_num >= manager.figure_num)
-        return false;
+        return 255u;
     if (builder == NULL)
-        return false;
+        return 255u;
 
     uint8_t index = manager.configured_figure_num;
     manager.configured_figure_num++;
@@ -126,26 +146,41 @@ bool refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level
 
     manager.figures[index].refresh_level = refresh_level;
 
-    return true;
+    return index;
 }
 
-bool refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *, figure_operation_type_e))
+uint8_t refereeRobotInteractionCharacterConfig(void (*builder)(interaction_character_t *, figure_operation_type_e))
 {
+    if (!manager.init_success)
+        return 255u;
     if (manager.configured_character_num >= manager.character_num)
-        return false;
+        return 255u;
     if (builder == NULL)
-        return false;
+        return 255u;
 
     uint8_t index = manager.configured_character_num;
     manager.configured_character_num++;
 
     manager.characters[index].builder = builder;
 
-    return true;
+    return index;
+}
+
+void refereeClientUiDynamicFigureAdjust(uint8_t index, client_ui_refresh_level_e refresh_level)
+{
+    if (!manager.init_success)
+        return;
+    if (index >= manager.configured_figure_num)
+        return;
+
+    manager.figures[index].refresh_level = refresh_level;
 }
 
 void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t index)
 {
+    if (!manager.init_success)
+        return;
+
     if (operation_type == UI_RESET_ALL)
     {
         for (uint8_t i = 0; i < manager.configured_figure_num; i++)
@@ -155,81 +190,81 @@ void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t i
     }
     else if (operation_type == UI_RESET_ALL_FIGURES)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_plotted = false;
     }
     else if (operation_type == UI_RESET_ALL_CHARACTERS)
     {
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_plotted = false;
     }
     else if (operation_type == UI_RESET_FIGURE)
     {
-        if (index >= manager.figure_num)
+        if (index >= manager.configured_figure_num)
             return;
         manager.figures[index].is_plotted = false;
     }
     else if (operation_type == UI_RESET_CHARACTER)
     {
-        if (index >= manager.character_num)
+        if (index >= manager.configured_character_num)
             return;
         manager.characters[index].is_plotted = false;
     }
     else if (operation_type == UI_HIDE_ALL)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_hidden = true;
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_hidden = true;
     }
     else if (operation_type == UI_HIDE_ALL_FIGURES)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_hidden = true;
     }
     else if (operation_type == UI_HIDE_ALL_CHARACTERS)
     {
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_hidden = true;
     }
     else if (operation_type == UI_HIDE_FIGURE)
     {
-        if (index >= manager.figure_num)
+        if (index >= manager.configured_figure_num)
             return;
         manager.figures[index].is_hidden = true;
     }
     else if (operation_type == UI_HIDE_CHARACTER)
     {
-        if (index >= manager.character_num)
+        if (index >= manager.configured_character_num)
             return;
         manager.characters[index].is_hidden = true;
     }
     else if (operation_type == UI_DISPLAY_ALL)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_hidden = false;
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_hidden = false;
     }
     else if (operation_type == UI_DISPLAY_ALL_FIGURES)
     {
-        for (uint8_t i = 0; i < manager.figure_num; i++)
+        for (uint8_t i = 0; i < manager.configured_figure_num; i++)
             manager.figures[i].is_hidden = false;
     }
     else if (operation_type == UI_DISPLAY_ALL_CHARACTERS)
     {
-        for (uint8_t i = 0; i < manager.character_num; i++)
+        for (uint8_t i = 0; i < manager.configured_character_num; i++)
             manager.characters[i].is_hidden = false;
     }
     else if (operation_type == UI_DISPLAY_FIGURE)
     {
-        if (index >= manager.figure_num)
+        if (index >= manager.configured_figure_num)
             return;
         manager.figures[index].is_hidden = false;
     }
     else if (operation_type == UI_DISPLAY_CHARACTER)
     {
-        if (index >= manager.character_num)
+        if (index >= manager.configured_character_num)
             return;
         manager.characters[index].is_hidden = false;
     }
