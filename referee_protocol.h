@@ -28,11 +28,13 @@
 
 typedef enum
 {
+    GAME_STATUS_CMD_ID = 0x0001,
     GAME_ROBOT_HP_CMD_ID = 0x0003,
 
     ROBOT_STATUS_CMD_ID = 0x0201,
     POWER_HEAT_DATA_CMD_ID = 0x0202,
     SHOOT_DATA_CMD_ID = 0x0207,
+    PROJECTILE_ALLOWANCE_CMD_ID = 0x0208,
 
     ROBOT_INTERACTION_DATA_CMD_ID = 0x0301,
 
@@ -241,6 +243,20 @@ typedef struct
     uint8_t launching_frequency;
     float initial_speed;
 } shoot_data_t;
+
+/**
+ * @命令码 0x0208
+ * @数据段长度 6
+ * @说明 允许发弹量，固定以10Hz频率发送
+ * @发送方/接收方 服务器→己方英雄、步兵、哨兵、空中机器人
+ * @所属数据链路 常规链路
+ */
+typedef  struct 
+{ 
+  uint16_t projectile_allowance_17mm; 
+  uint16_t projectile_allowance_42mm;  
+  uint16_t remaining_gold_coin; 
+}projectile_allowance_t; 
 
 /**
  * @命令码 0x0301

@@ -5,7 +5,7 @@
 
 #include "referee_frame_process.h"
 
-robot_interaction_manager_t manager;
+static robot_interaction_manager_t manager;
 
 static uint8_t *manage_and_encode_message_data(void);
 // static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer);

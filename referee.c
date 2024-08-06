@@ -3,20 +3,24 @@
 
 #include "referee.h"
 
+static game_status_t game_status;
 static game_robot_HP_t game_robot_HP;
 static robot_status_t robot_status;
 static power_heat_data_t power_heat_data;
 static shoot_data_t shoot_data;
+static projectile_allowance_t projectile_allowance;
 static uint8_t robot_interaction_message_data[118];
 static custom_robot_data_t customer_controller_data;
 static vt_link_remote_control_t vt_link_remote_control;
 
 void refereeInitData(void)
 {
+    memset(&game_status, 0, sizeof(game_status_t));
     memset(&game_robot_HP, 0, sizeof(game_robot_HP_t));
     memset(&robot_status, 0, sizeof(robot_status_t));
     memset(&power_heat_data, 0, sizeof(power_heat_data_t));
     memset(&shoot_data, 0, sizeof(shoot_data_t));
+    memset(&projectile_allowance, 0, sizeof(projectile_allowance_t));
     memset(robot_interaction_message_data, 0, 118 * sizeof(uint8_t));
     memset(&customer_controller_data, 0, sizeof(custom_robot_data_t));
     memset(&vt_link_remote_control, 0, sizeof(vt_link_remote_control_t));
@@ -29,7 +33,10 @@ void referee_data_decode(uint8_t *frame, uint16_t cmd_id)
     switch (cmd_id)
     {
         /* 常规链路 */
-
+    case GAME_STATUS_CMD_ID: {
+        memcpy(&game_status, frame + index, sizeof(game_status_t));
+        break;
+    }
     case GAME_ROBOT_HP_CMD_ID: {
         memcpy(&game_robot_HP, frame + index, sizeof(game_robot_HP_t));
         break;
@@ -44,6 +51,10 @@ void referee_data_decode(uint8_t *frame, uint16_t cmd_id)
     }
     case SHOOT_DATA_CMD_ID: {
         memcpy(&shoot_data, frame + index, sizeof(shoot_data_t));
+        break;
+    }
+    case PROJECTILE_ALLOWANCE_CMD_ID: {
+        memcpy(&projectile_allowance, frame + index, sizeof(projectile_allowance_t));
         break;
     }
 
@@ -77,6 +88,11 @@ void referee_data_decode(uint8_t *frame, uint16_t cmd_id)
     }
 }
 
+const game_status_t *getGameStatus(void)
+{
+    return &game_status;
+}
+
 const game_robot_HP_t *getRobotHp(void)
 {
     return &game_robot_HP;
@@ -105,6 +121,11 @@ const power_heat_data_t *getPowerHeatData(void)
 const shoot_data_t *getShootData(void)
 {
     return &shoot_data;
+}
+
+const projectile_allowance_t *getProjectileAllowance(void)
+{
+    return &projectile_allowance;
 }
 
 const uint8_t *getRobotInteractionMessageData(void)
