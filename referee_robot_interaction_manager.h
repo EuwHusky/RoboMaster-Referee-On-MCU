@@ -56,11 +56,14 @@ typedef enum ClientUiOperationType
 
 } client_ui_operation_type_e;
 
-// typedef struct InteractionMessageFactory
-// {
-//     uint8_t *message;
-//     void (*builder)(uint8_t target_id, uint8_t *);
-// } interaction_message_factory_t;
+typedef struct InteractionMessageFactory
+{
+    uint16_t message_id;
+    uint16_t target_id;
+    uint8_t message[112];
+    uint8_t data_length;
+    void (*builder)(uint8_t *, uint8_t *);
+} interaction_message_factory_t;
 
 typedef struct InteractionFigureFactory
 {
@@ -91,9 +94,11 @@ typedef struct RobotInteractionManager
     uint16_t sub_cmd_id;                                           // 子内容ID
     uint8_t *interaction_data_sent;                                // 子内容数据
 
-    // // 机器人间通信
-    // uint8_t message_target_num;
-    // interaction_message_factory_t messages;
+    // 机器人间通信
+    uint8_t message_num;
+    uint8_t configured_message_num;
+    uint8_t message_encode_index;
+    interaction_message_factory_t *messages;
 
     // UI
     // interaction_layer_delete_t layer_deleter;
@@ -116,11 +121,14 @@ typedef struct RobotInteractionManager
 
 } robot_interaction_manager_t;
 
+extern bool refereeRobotInteractionMessageInit(uint8_t message_num);
 extern bool refereeRobotInteractionManagerInit(uint8_t figure_num, uint8_t character_num);
+
 extern uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_type_e robot_interaction_type);
 extern void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time);
 
-// extern void refereeSetRobotInteractionMessageBuilder(uint8_t index, void (*builder)(interaction_figure_t *));
+extern uint8_t refereeRobotInteractionMessageConfig(uint16_t message_id, uint16_t target_id,
+                                                    void (*builder)(uint8_t *, uint8_t *));
 
 // extern void refereeSetRobotInteractionLayerDeleterBuilder(void (*builder)(interaction_layer_delete_t *));
 extern uint8_t refereeRobotInteractionFigureConfig(client_ui_refresh_level_e refresh_level,

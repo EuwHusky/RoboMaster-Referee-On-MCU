@@ -7,6 +7,7 @@ static game_robot_HP_t game_robot_HP;
 static robot_status_t robot_status;
 static power_heat_data_t power_heat_data;
 static shoot_data_t shoot_data;
+static uint8_t robot_interaction_message_data[118];
 static custom_robot_data_t customer_controller_data;
 static vt_link_remote_control_t vt_link_remote_control;
 
@@ -16,7 +17,7 @@ void refereeInitData(void)
     memset(&robot_status, 0, sizeof(robot_status_t));
     memset(&power_heat_data, 0, sizeof(power_heat_data_t));
     memset(&shoot_data, 0, sizeof(shoot_data_t));
-
+    memset(robot_interaction_message_data, 0, 118 * sizeof(uint8_t));
     memset(&customer_controller_data, 0, sizeof(custom_robot_data_t));
     memset(&vt_link_remote_control, 0, sizeof(vt_link_remote_control_t));
 }
@@ -43,6 +44,11 @@ void referee_data_decode(uint8_t *frame, uint16_t cmd_id)
     }
     case SHOOT_DATA_CMD_ID: {
         memcpy(&shoot_data, frame + index, sizeof(shoot_data_t));
+        break;
+    }
+
+    case ROBOT_INTERACTION_DATA_CMD_ID: {
+        memcpy(robot_interaction_message_data, frame + index, 8u);
         break;
     }
 
@@ -99,6 +105,11 @@ const power_heat_data_t *getPowerHeatData(void)
 const shoot_data_t *getShootData(void)
 {
     return &shoot_data;
+}
+
+const uint8_t *getRobotInteractionMessageData(void)
+{
+    return robot_interaction_message_data;
 }
 
 const custom_robot_data_t *getCustomerControllerData(void)

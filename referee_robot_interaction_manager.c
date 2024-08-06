@@ -5,13 +5,32 @@
 
 #include "referee_frame_process.h"
 
-static robot_interaction_manager_t manager;
+robot_interaction_manager_t manager;
 
+static uint8_t *manage_and_encode_message_data(void);
 // static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer);
 static uint8_t *manage_and_encode_client_ui_plot_data(void);
 
 static robot_interaction_data_header_t *modify_interaction_data_header(uint16_t sub_cmd_id, uint16_t target_id);
 static uint8_t get_sub_data_len_by_sub_cmd_id(uint16_t sub_cmd_id);
+
+bool refereeRobotInteractionMessageInit(uint8_t message_num)
+{
+    manager.message_num = message_num;
+    manager.configured_message_num = 0;
+    manager.message_encode_index = 0;
+    if (manager.message_num > 0 && manager.message_num < 255)
+    {
+        manager.messages = malloc(manager.message_num * sizeof(interaction_message_factory_t));
+        memset(manager.messages, 0, manager.message_num * sizeof(interaction_message_factory_t));
+    }
+    else
+    {
+        return false;
+    }
+
+    return true;
+}
 
 /**
  * @brief 初始化机器人交互数据管理器
@@ -79,7 +98,11 @@ uint8_t *refereeEncodeRobotInteractionData(uint32_t now_time, robot_interaction_
         switch (robot_interaction_type)
         {
         case ROBOT_TO_ROBOT_INTERACTION: {
-            return NULL;
+            if (sub_data = manage_and_encode_message_data(), sub_data == NULL)
+                return NULL;
+            return referee_pack_data(ROBOT_INTERACTION_DATA_CMD_ID, sub_data,
+                                     sizeof(robot_interaction_data_header_t) +
+                                         manager.messages[manager.message_encode_index].data_length);
         }
         case CLIENT_UI_PLOT: {
             if (sub_data = manage_and_encode_client_ui_plot_data(), sub_data == NULL)
@@ -111,6 +134,28 @@ void refereeRobotInteractionManagerSuccessfullySentHook(uint32_t now_time)
     manager.last_successful_send_time = now_time;
 }
 
+uint8_t refereeRobotInteractionMessageConfig(uint16_t message_id, uint16_t target_id,
+                                             void (*builder)(uint8_t *, uint8_t *))
+{
+    if (!manager.init_success)
+        return 255u;
+    if (manager.configured_message_num >= manager.message_num)
+        return 255u;
+    if (builder == NULL)
+        return 255u;
+
+    uint8_t index = manager.configured_message_num;
+    manager.configured_message_num++;
+
+    manager.messages[index].message_id = message_id;
+    manager.messages[index].target_id = target_id;
+
+    manager.messages[index].data_length = 0;
+
+    manager.messages[index].builder = builder;
+
+    return index;
+}
 // void refereeSetRobotInteractionMessageBuilder(uint8_t index, void (*builder)(interaction_figure_t *))
 // {
 //     if (index >= manager.message_target_num)
@@ -270,7 +315,29 @@ void refereeClientUiOperate(client_ui_operation_type_e operation_type, uint8_t i
     }
 }
 
-// 机器人间通信还需要提供修改内容的API和获取编码后数据流的API
+static uint8_t *manage_and_encode_message_data(void)
+{
+    manager.sub_cmd_id = manager.messages[manager.message_encode_index].message_id;
+
+    manager.messages[manager.message_encode_index].builder(manager.messages[manager.message_encode_index].message,
+                                                           &manager.messages[manager.message_encode_index].data_length);
+
+    /* 数据头编码 */
+    memcpy(manager.interaction_data_sent,
+           modify_interaction_data_header(manager.sub_cmd_id, manager.messages[manager.message_encode_index].target_id),
+           sizeof(robot_interaction_data_header_t));
+    /* 数据内容编码 */
+    memset(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t), 0,
+           manager.messages[manager.message_encode_index].data_length);
+    memcpy(manager.interaction_data_sent + sizeof(robot_interaction_data_header_t),
+           manager.messages[manager.message_encode_index].message,
+           manager.messages[manager.message_encode_index].data_length);
+
+    manager.message_encode_index =
+        manager.message_encode_index >= (manager.configured_message_num - 1) ? 0 : manager.message_encode_index + 1;
+
+    return manager.interaction_data_sent;
+}
 
 // static uint8_t *encode_client_ui_delete_data(layer_delete_type_e delete_type, uint8_t layer)
 // {
